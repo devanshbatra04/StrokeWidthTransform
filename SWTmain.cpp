@@ -81,7 +81,7 @@ namespace DetectText {
                                 G_yt = -G_yt;
                             }
 
-                            if (acos(dx * -G_xt + dy * -G_yt) < PI/2.0 ) {
+                            if (acos(dx * G_xt + dy * G_yt) < PI/2.0 ) {
                                 float length = sqrt( ((float)ray.q.x - (float)ray.p.x)*((float)ray.q.x - (float)ray.p.x) + ((float)ray.q.y - (float)ray.p.y)*((float)ray.q.y - (float)ray.p.y));
                                 for (std::vector<SWTPoint>::iterator pit = points.begin(); pit != points.end(); pit++) {
                                     if (SWTImage.at<float>(pit->y, pit->x) < 0) {
@@ -100,9 +100,30 @@ namespace DetectText {
                  
             }
         }
+        for (int i = 0; i < 10000; i++) {
+            std::cout << rays.size() << " rays were found" << std::endl;
+        }
         namedWindow( "Grayscale Image", WINDOW_AUTOSIZE ); 
         imshow( "Grayscale Image", edgeImage );  
         waitKey(0);
+    }
+    bool sortBySWT (const SWTPoint &lhs, const SWTPoint &rhs) {
+        return lhs.SWT < rhs.SWT;
+    }
+
+
+    void SWTSecondPass (Mat & SWTImage, std::vector<Ray> & rays) {
+        for (std::vector<Ray>::iterator rit = rays.begin(); rit != rays.end(); rit++) {
+            for (std::vector<SWTPoint>::iterator pit = rit->points.begin(); pit != rit->points.end(); pit++) {
+                pit->SWT = SWTImage.at<float>(pit->y, pit->x);
+            }
+            std::sort(rit->points.begin(), rit->points.end(), sortBySWT);
+            float median = (rit -> points[rit -> points.size()/2]).SWT;
+            for (std::vector<SWTPoint>::iterator pit = rit->points.begin(); pit != rit->points.end(); pit++) {
+                SWTImage.at<float>(pit->y, pit->x) = std::min(pit->SWT, median);
+            }
+            
+        }
     }
 
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
@@ -144,57 +165,15 @@ namespace DetectText {
         Mat SWTImage( input_image.size(), CV_32FC1 );
         
         SWTFirstPass (canny_edge_image, gradientX, gradientY, dark_on_light, SWTImage, rays );
-        // SWTMedianFilter ( SWTImage, rays );
+        SWTSecondPass ( SWTImage, rays );
 
-        // Mat output2( input.size(), CV_32FC1 );
-        // normalizeImage (SWTImage, output2);
-        // Mat saveSWT( input.size(), CV_8UC1 );
-        // output2.convertTo(saveSWT, CV_8UC1, 255);
-        // imwrite ( "SWT.png", saveSWT);
-
-
-
-        // // Calculate legally connect components from SWT and gradient image.
-        // // return type is a vector of vectors, where each outer vector is a component and
-        // // the inner vector contains the (y,x) of each pixel in that component.
-        // std::vector<std::vector<SWTPoint2d> > components = findLegallyConnectedComponents(SWTImage, rays);
-
-        // // Filter the components
-        // std::vector<std::vector<SWTPoint2d> > validComponents;
-        // std::vector<SWTPointPair2d > compBB;
-        // std::vector<Point2dFloat> compCenters;
-        // std::vector<float> compMedians;
-        // std::vector<SWTPoint2d> compDimensions;
-        // filterComponents(SWTImage, components, validComponents, compCenters, compMedians, compDimensions, compBB );
-
-        // Mat output3( input.size(), CV_8UC3 );
-        // renderComponentsWithBoxes (SWTImage, validComponents, compBB, output3);
-        // imwrite ( "components.png",output3);
-        // //
-
-        // // Make chains of components
-        // std::vector<Chain> chains;
-        // chains = makeChains(input, validComponents, compCenters, compMedians, compDimensions, compBB);
-
-        // Mat output4( input.size(), CV_8UC1 );
-        // renderChains ( SWTImage, validComponents, chains, output4 );
-        // //imwrite ( "text.png", output4);
-
-        // Mat output5( input.size(), CV_8UC3 );
-        // cvtColor (output4, output5, CV_GRAY2RGB);
-
-
-        // /*IplImage * output =
-        //         cvCreateImage ( input.size(), CV_8UC3 );
-        // renderChainsWithBoxes ( SWTImage, validComponents, chains, compBB, output); */
-        // return output5;
     }
 }
 
 int main() {
-    string imagePath = "/home/opencv-dev/Desktop/house.jpg";
+    string imagePath = "/home/opencv-dev/Desktop/bottle.jpeg";
     cv::Mat image = imread(imagePath);
-    DetectText::textDetection(image, 1);
+    DetectText::textDetection(image, 0);
     cvDestroyAllWindows();
     return 0;
 }
