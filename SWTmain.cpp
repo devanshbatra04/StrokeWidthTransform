@@ -122,8 +122,41 @@ namespace DetectText {
             for (std::vector<SWTPoint>::iterator pit = rit->points.begin(); pit != rit->points.end(); pit++) {
                 SWTImage.at<float>(pit->y, pit->x) = std::min(pit->SWT, median);
             }
-            
         }
+    }
+    
+    void normalizeAndScale (const Mat& SWTImage, Mat& output) {
+        assert (SWTImage.depth() == CV_32F );
+        assert (SWTImage.channels() == 1);
+        assert (output.depth() == CV_8U);
+        assert (output.channels() == 1);
+
+        Mat outputTemp(output.size(), CV_32FC1);
+
+        float maxSWT = 0;
+        float minSWT = 1e100;
+        for(int row = 0; row < SWTImage.rows; row++){
+            for (int col = 0; col < SWTImage.cols; col++){
+                float val  = SWTImage.at<float>(row, col);
+                if (val < 0) continue;
+                maxSWT = std::max(val, maxSWT);
+                minSWT = std::min(val, minSWT);
+            }
+        }
+
+        float amplitude = maxSWT - minSWT;
+        for(int row = 0; row < SWTImage.rows; row++){
+            for (int col = 0; col < SWTImage.cols; col++){
+                float val  = SWTImage.at<float>(row, col);
+                if (val < 0) {
+                    outputTemp.at<float>(row, col) = 1;
+                }
+                else {
+                    outputTemp.at<float>(row, col) = (val - minSWT) / amplitude;
+                }
+            }
+        }
+        outputTemp.convertTo(output, CV_8UC1, 255);
     }
 
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
@@ -167,13 +200,23 @@ namespace DetectText {
         SWTFirstPass (canny_edge_image, gradientX, gradientY, dark_on_light, SWTImage, rays );
         SWTSecondPass ( SWTImage, rays );
 
+        Mat normalised_image (input_image.size(), CV_8UC1);
+        normalizeAndScale(SWTImage, normalised_image);
+        namedWindow( "Normalized SWT Image", WINDOW_AUTOSIZE); 
+        imshow( "Normalized SWT Image", normalised_image);  
+        waitKey(0);
+
+        // Calculate legally connect components from SWT and gradient image.
+        // return type is a vector of vectors, where each outer vector is a component and
+        // the inner vector contains the (y,x) of each pixel in that component.
+        // std::vector<std::vector<SWTPoint> > components = findLegallyConnectedComponents(SWTImage, rays);
     }
 }
 
 int main() {
-    string imagePath = "/home/opencv-dev/Desktop/bottle.jpeg";
+    string imagePath = "/home/opencv-dev/Desktop/scene/aPICT0006.JPG";
     cv::Mat image = imread(imagePath);
-    DetectText::textDetection(image, 0);
+    DetectText::textDetection(image, 1);
     cvDestroyAllWindows();
     return 0;
 }
