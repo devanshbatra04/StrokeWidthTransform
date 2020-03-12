@@ -8,7 +8,9 @@
 #include <time.h>
 #include <utility>
 #include <algorithm>
+#include <unordered_map>
 #include <vector>
+
 
 #define PI 3.14159265
 
@@ -20,6 +22,46 @@ using namespace SWT;
 
 
 namespace DetectText {
+
+    // A utility function to add an edge in an 
+    // undirected graph. 
+    void addEdge(vector<int> adj[], int u, int v) { 
+        adj[u].push_back(v); 
+        adj[v].push_back(u); 
+    }
+
+    void DFSUtil(int v, bool visited[], vector<int> adj[], int label, vector<int> &component_id) 
+    { 
+        // Mark the current node as visited and label it as belonging to the current component
+        visited[v] = true; 
+        component_id[v] = label;
+        // Recur for all the vertices 
+        // adjacent to this vertex 
+        for (int i = 0; i < adj[v].size(); i++) {
+            int neighbour = adj[v][i];
+            if (!visited[neighbour]) {
+                DFSUtil(neighbour, visited, adj, label, component_id); 
+            }
+        }
+    } 
+
+    int connected_components(vector<int> adj[], vector<int> &component_id, int num_vertices) {
+        bool *visited = new bool[num_vertices]; 
+        for(int v = 0; v < num_vertices; v++) 
+            visited[v] = false; 
+        int label = 0;
+        for (int v=0; v<num_vertices; v++) 
+        { 
+            if (visited[v] == false) 
+            { 
+                DFSUtil(v, visited, adj, label, component_id); 
+                label++;
+            } 
+        } 
+
+        delete [] visited;
+        return label;
+    }
 
     void SWTFirstPass (Mat edgeImage, Mat gradientX, Mat gradientY, bool dark_on_light, Mat & SWTImage, std::vector<Ray> & rays) {
         for( int row = 0; row < edgeImage.rows; row++ ){
@@ -159,6 +201,85 @@ namespace DetectText {
         outputTemp.convertTo(output, CV_8UC1, 255);
     }
 
+    std::vector<std::vector<SWTPoint>> getComponents (Mat& SWTImage, std::vector<Ray> & rays) {
+        std::unordered_map<int, int> Pix2Node;
+        std::unordered_map<int, SWTPoint> Node2Pix;
+
+        int V = 2;
+        
+        int num_vertices = 0;
+
+        for(int row = 0; row < SWTImage.rows; row++){
+            for (int col = 0; col < SWTImage.cols; col++){
+                float val  = SWTImage.at<float>(row, col);
+                if (val < 0) {
+                    continue;
+                }
+                else {
+                    Pix2Node[row * SWTImage.cols + col] = num_vertices;
+                    SWTPoint p;
+                    p.x = col;
+                    p.y = row;
+                    Node2Pix[num_vertices] = p;
+                    num_vertices++;
+                }
+            }
+        }
+        vector<int>* graph = new vector<int> [num_vertices]; 
+
+
+        for(int row = 0; row < SWTImage.rows; row++){
+            for (int col = 0; col < SWTImage.cols; col++){
+                float val  = SWTImage.at<float>(row, col);
+                if (val < 0) {
+                    continue;
+                }
+                else {
+                    int currentNode = Pix2Node[row * SWTImage.cols + col];
+                    if (col+1 < SWTImage.cols) {
+                        float right = SWTImage.at<float>(row, col+1);
+                        if (right > 0 && (val/right <= 3.0 || right/val <= 3.0))
+                            addEdge(graph, currentNode, Pix2Node.at(row * SWTImage.cols + col + 1));
+                    }
+                    if (row+1 < SWTImage.rows) {
+                        if (col+1 < SWTImage.cols) {
+                            float right_down = SWTImage.at<float>(row+1, col+1);
+                            if (right_down > 0 && (val/right_down <= 3.0 || right_down/val <= 3.0))
+                                addEdge(graph, currentNode, Pix2Node.at((row+1) * SWTImage.cols + col + 1));
+                        }
+                        float down = SWTImage.at<float>(row+1, col);
+                        if (down > 0 && (val/down <= 3.0 || down/val <= 3.0))
+                            addEdge(graph, currentNode, Pix2Node.at((row+1) * SWTImage.cols + col));
+                        if (col-1 >= 0) {
+                            float left_down = SWTImage.at<float>(row+1, col-1);
+                            if (left_down > 0 && (val/left_down <= 3.0 || left_down/val <= 3.0))
+                                addEdge(graph, currentNode, Pix2Node.at((row+1) * SWTImage.cols + col - 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        std::vector<int> component_id(num_vertices);
+
+        int num_comp = connected_components(graph, component_id, num_vertices);
+
+        std::vector<std::vector<SWTPoint> > components;
+        components.reserve(num_comp);
+        std::cout << "Before filtering, " << num_comp << " components and " << num_vertices << " vertices" << std::endl;
+        for (int j = 0; j < num_comp; j++) {
+            std::vector<SWTPoint> tmp;
+            components.push_back(tmp);
+        }
+        for (int j = 0; j < num_vertices; j++) {
+            SWTPoint p = Node2Pix[j];
+            (components[component_id[j]]).push_back(p);
+        }
+        delete [] graph ;
+
+        return components;
+}
+
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
         assert (input_image.channels() == 3);
@@ -209,7 +330,7 @@ namespace DetectText {
         // Calculate legally connect components from SWT and gradient image.
         // return type is a vector of vectors, where each outer vector is a component and
         // the inner vector contains the (y,x) of each pixel in that component.
-        // std::vector<std::vector<SWTPoint> > components = findLegallyConnectedComponents(SWTImage, rays);
+        std::vector<std::vector<SWTPoint> > components = getComponents(SWTImage, rays);
     }
 }
 
