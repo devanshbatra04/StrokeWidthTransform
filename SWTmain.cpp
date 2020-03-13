@@ -278,7 +278,136 @@ namespace DetectText {
         delete [] graph ;
 
         return components;
-}
+    }
+
+    ComponentAttr getAttributes(vector<SWTPoint> component, Mat& SWTImage) {
+        std::vector<float> temp;
+        temp.reserve(component.size());
+        ComponentAttr attributes;
+        attributes.mean = 0;
+        attributes.variance = 0;
+
+        attributes.xmin = 100000;
+        attributes.ymin = 100000;
+
+        attributes.xmax = 0;
+        attributes.ymax = 0;
+
+        float sum = 0;
+        
+        for (int i = 0; i < component.size(); i++) {
+            float val = SWTImage.at<float> (component[i].y, component[i].x);
+            sum += val;
+            temp.push_back(val);
+            attributes.xmin = std::min (attributes.xmin, component[i].x);
+            attributes.ymin = std::min (attributes.ymin, component[i].y);
+            attributes.xmax = std::max (attributes.xmax, component[i].x);
+            attributes.ymax = std::max (attributes.ymax, component[i].y);
+        }
+        attributes.mean = sum / ((float)component.size());
+        for (int i = 0; i < component.size(); i++) {
+            attributes.variance += (temp[i] - attributes.mean) * (temp[i] - attributes.mean);
+        }
+        
+        attributes.variance = attributes.variance / ((float)component.size());
+        std::sort(temp.begin(),temp.end());
+        attributes.median = temp[temp.size()/2];
+
+        attributes.length = (float) (attributes.xmax - attributes.xmin + 1);
+        attributes.width = (float) (attributes.ymax - attributes.ymin + 1);
+        return attributes;
+    }
+
+    std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components){
+        std::vector<Component> filteredComponents;
+        filteredComponents.reserve(components.size());
+        for (int i = 0; i < components.size(); i++) {
+            vector<SWTPoint> component = components[i];
+            ComponentAttr attributes = getAttributes(component, SWTImage);  
+            if (attributes.variance > 0.5 * attributes.mean) continue;
+            if (attributes.width > 300) continue;
+            
+
+            float area = attributes.length * attributes.width;
+            float rminx = (float) attributes.xmin;
+            float rmaxx = (float) attributes.xmax;
+            float rminy = (float) attributes.ymin;
+            float rmaxy = (float) attributes.ymax;
+            // compute the rotated bounding box
+            float increment = 1./36.;
+            for (float theta = increment * PI; theta<PI/2.0; theta += increment * PI) {
+                float xmin,xmax,ymin,ymax,xtemp,ytemp,ltemp,wtemp;
+                    xmin = 1000000;
+                    ymin = 1000000;
+                    xmax = 0;
+                    ymax = 0;
+                for (unsigned int j = 0; j < components[i].size(); j++) {
+                    xtemp = components[i][j].x * cos(theta) + components[i][j].y * -sin(theta);
+                    ytemp = components[i][j].x * sin(theta) + components[i][j].y * cos(theta);
+                    xmin = std::min(xtemp,xmin);
+                    xmax = std::max(xtemp,xmax);
+                    ymin = std::min(ytemp,ymin);
+                    ymax = std::max(ytemp,ymax);
+                }
+                ltemp = xmax - xmin + 1;
+                wtemp = ymax - ymin + 1;
+                if (ltemp*wtemp < area) {
+                    area = ltemp*wtemp;
+                    attributes.length = ltemp;
+                    attributes.width = wtemp;
+                }
+            }
+            
+            if (attributes.length/attributes.width < 1./10. || attributes.length/attributes.width > 10.) continue;
+
+            Component acceptedComponent;
+            acceptedComponent.length = attributes.length;
+            
+            acceptedComponent.cx = ((float) (attributes.xmax+attributes.xmin)) / 2;
+            acceptedComponent.cy = ((float) (attributes.ymax+attributes.ymin)) / 2;
+
+            acceptedComponent.BB_pointP.x = attributes.xmin;
+            acceptedComponent.BB_pointP.y = attributes.ymin;
+
+            acceptedComponent.BB_pointQ.x = attributes.xmax;
+            acceptedComponent.BB_pointQ.y = attributes.ymax;
+
+            acceptedComponent.length = attributes.xmax - attributes.xmin + 1;
+            acceptedComponent.width = attributes.ymax - attributes.ymin + 1;
+
+            acceptedComponent.mean = attributes.mean;
+            acceptedComponent.median = attributes.median;
+
+            acceptedComponent.points = component;
+            
+            filteredComponents.push_back(acceptedComponent);
+        }
+
+        std::vector<Component> tempComp;
+        tempComp.reserve(filteredComponents.size());
+        
+        for (unsigned int i = 0; i < filteredComponents.size(); i++) {
+            int count = 0;
+            Component compi = filteredComponents[i];
+            for (unsigned int j = 0; j < filteredComponents.size(); j++) {
+                if (i != j) {
+                    Component compj = filteredComponents[j];
+                    if (compi.BB_pointP.x <= compj.cx && compi.BB_pointQ.x >= compj.cx &&
+                        compi.BB_pointP.y <= compj.cy && compi.BB_pointQ.y >= compj.cy) {
+                        count++;
+                    }
+                }
+            }
+            if (count < 2) {
+                tempComp.push_back(compi);
+            }
+        }
+        filteredComponents = tempComp;
+
+
+        std::cout << "After filtering " << filteredComponents.size() << " components" << std::endl;
+        return filteredComponents;
+    };
 
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
@@ -331,6 +460,13 @@ namespace DetectText {
         // return type is a vector of vectors, where each outer vector is a component and
         // the inner vector contains the (y,x) of each pixel in that component.
         std::vector<std::vector<SWTPoint> > components = getComponents(SWTImage, rays);
+        std::vector<Component> validComponents = filterComponents(SWTImage, components);
+        // std::vector<std::vector<SWTPoint2d> > validComponents;
+        // std::vector<SWTPointPair2d > compBB;
+        // std::vector<Point2dFloat> compCenters;
+        // std::vector<float> compMedians;
+        // std::vector<SWTPoint2d> compDimensions;
+        // filterComponents(SWTImage, components, validComponents, compCenters, compMedians, compDimensions, compBB );
     }
 }
 

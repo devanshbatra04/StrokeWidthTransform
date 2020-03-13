@@ -2,6 +2,7 @@
 #define TEXTDETECTION_H
 
 #include <opencv2/core/core.hpp>
+#include <vector>
 
 namespace SWT {
     struct SWTPoint {
@@ -14,6 +15,24 @@ namespace SWT {
         SWTPoint p;
         SWTPoint q;
         std::vector<SWTPoint> points;
+    };
+
+    struct Component {
+        SWTPoint BB_pointP;
+        SWTPoint BB_pointQ;
+        float cx;
+        float cy;
+        float median;
+        float mean;
+        int length, width;
+        std::vector<SWTPoint> points;
+    };
+
+    struct ComponentAttr {
+        float mean, variance, median;
+        int xmin, ymin;
+        int xmax, ymax;
+        float length, width;
     };
 
 // struct SWTPoint2d {
