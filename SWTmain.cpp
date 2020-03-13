@@ -70,11 +70,13 @@ namespace DetectText {
                 *ptr++ = -1;
             }
         }
+        
+        long long int count = 0;
 
         for( int row = 0; row < edgeImage.rows; row++ ){
             for ( int col = 0; col < edgeImage.cols; col++ ){
                 uchar canny = edgeImage.at<uchar>(row, col);
-                if (canny == 0) continue;
+                if (canny <= 0) continue;
 
                 float dx = gradientX.at<float>(row, col);
                 float dy = gradientY.at<float>(row, col);
@@ -101,6 +103,7 @@ namespace DetectText {
 
                 float inc = 0.05;
                 while(true) {
+                    count++;
                     curPosX += inc * dx;
                     curPosY += inc * dy;
                     if ((int)(floor(curPosX)) != curPixX || (int)(floor(curPosY)) != curPixY) {
@@ -118,12 +121,14 @@ namespace DetectText {
                             float G_xt = gradientX.at<float>(curPixY,curPixX);
                             float G_yt = gradientY.at<float>(curPixY,curPixX);
                             mag = sqrt( (G_xt * G_xt) + (G_yt * G_yt) );
+                            G_xt = G_xt / mag;
+                            G_yt = G_yt / mag;
                             if (dark_on_light){
                                 G_xt = -G_xt;
                                 G_yt = -G_yt;
                             }
 
-                            if (acos(dx * G_xt + dy * G_yt) < PI/2.0 ) {
+                            if (acos(dx * -G_xt + dy * -G_yt) < PI/2.0 ) {
                                 float length = sqrt( ((float)ray.q.x - (float)ray.p.x)*((float)ray.q.x - (float)ray.p.x) + ((float)ray.q.y - (float)ray.p.y)*((float)ray.q.y - (float)ray.p.y));
                                 for (std::vector<SWTPoint>::iterator pit = points.begin(); pit != points.end(); pit++) {
                                     if (SWTImage.at<float>(pit->y, pit->x) < 0) {
@@ -141,9 +146,6 @@ namespace DetectText {
                 }
                  
             }
-        }
-        for (int i = 0; i < 10000; i++) {
-            std::cout << rays.size() << " rays were found" << std::endl;
         }
         namedWindow( "Grayscale Image", WINDOW_AUTOSIZE ); 
         imshow( "Grayscale Image", edgeImage );  
@@ -318,6 +320,52 @@ namespace DetectText {
         return attributes;
     }
 
+    void renderComponents (const Mat& SWTImage, std::vector<Component> components, Mat& output) {
+        output.setTo(0);
+
+        for (int i = 0; i < components.size(); i++) {
+            Component component = components[i];
+            for (int j = 0; j < component.points.size(); j++) {
+                output.at<float>(component.points[j].y, component.points[j].x) = SWTImage.at<float>(component.points[j].y, component.points[j].x);
+            }
+        }
+        for( int row = 0; row < output.rows; row++ ){
+            float* ptr = (float*)output.ptr(row);
+            for ( int col = 0; col < output.cols; col++ ){
+                if (*ptr == 0) {
+                    *ptr = -1;
+                }
+                ptr++;
+            }
+        }
+        float maxVal = 0;
+        float minVal = 1e100;
+        for( int row = 0; row < output.rows; row++ ){
+            const float* ptr = (const float*)output.ptr(row);
+            for ( int col = 0; col < output.cols; col++ ){
+                if (*ptr == 0) { }
+                else {
+                    maxVal = std::max(*ptr, maxVal);
+                    minVal = std::min(*ptr, minVal);
+                }
+                ptr++;
+            }
+        }
+        float difference = maxVal - minVal;
+        for( int row = 0; row < output.rows; row++ ) {
+            float* ptr = (float*)output.ptr(row);
+            for ( int col = 0; col < output.cols; col++ ) {
+                if (*ptr < 1) {
+                    *ptr = 1;
+                } else {
+                    *ptr = ((*ptr) - minVal)/difference;
+                }
+                ptr++;
+            }
+        }
+
+    }
+
     std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components){
         std::vector<Component> filteredComponents;
         filteredComponents.reserve(components.size());
@@ -409,6 +457,28 @@ namespace DetectText {
         return filteredComponents;
     };
 
+    void renderComponentBBs (Mat& SWTImage, std::vector<Component> components, Mat& output) {
+        Mat outTemp( output.size(), CV_8UC1 );
+
+        output.convertTo(outTemp, CV_8UC1, 255.);
+        cvtColor (outTemp, output, CV_GRAY2RGB);
+
+        for (int i = 0; i < components.size(); i++) {
+            Component compi = components[i];
+            Scalar c;
+            if (i % 3 == 0) {
+                c = BLUE;
+            }
+            else if (i % 3 == 1) {
+                c = GREEN;
+            }
+            else {
+                c = RED;
+            }
+            rectangle(output, cvPoint(compi.BB_pointP.x, compi.BB_pointP.y), cvPoint(compi.BB_pointQ.x, compi.BB_pointQ.y), c, 2);
+        }
+    }
+
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
         assert (input_image.channels() == 3);
@@ -448,6 +518,10 @@ namespace DetectText {
         Mat SWTImage( input_image.size(), CV_32FC1 );
         
         SWTFirstPass (canny_edge_image, gradientX, gradientY, dark_on_light, SWTImage, rays );
+        namedWindow( "SWTafterFirstPass", WINDOW_AUTOSIZE); 
+        imshow( "SWTafterFirstPass", SWTImage);  
+        waitKey(0);
+
         SWTSecondPass ( SWTImage, rays );
 
         Mat normalised_image (input_image.size(), CV_8UC1);
@@ -461,6 +535,13 @@ namespace DetectText {
         // the inner vector contains the (y,x) of each pixel in that component.
         std::vector<std::vector<SWTPoint> > components = getComponents(SWTImage, rays);
         std::vector<Component> validComponents = filterComponents(SWTImage, components);
+
+        Mat outTemp( input_image.size(), CV_32FC1 );
+        renderComponents(SWTImage, validComponents, outTemp);
+        renderComponentBBs(SWTImage, validComponents, outTemp);
+        namedWindow( "Rendered Components", WINDOW_AUTOSIZE); 
+        imshow( "Rendered Components", outTemp);  
+        waitKey(0);
         // std::vector<std::vector<SWTPoint2d> > validComponents;
         // std::vector<SWTPointPair2d > compBB;
         // std::vector<Point2dFloat> compCenters;
@@ -471,9 +552,9 @@ namespace DetectText {
 }
 
 int main() {
-    string imagePath = "/home/opencv-dev/Desktop/scene/aPICT0006.JPG";
+    string imagePath = "/home/opencv-dev/Desktop/bottle.jpeg";
     cv::Mat image = imread(imagePath);
-    DetectText::textDetection(image, 1);
+    DetectText::textDetection(image, 0);
     cvDestroyAllWindows();
     return 0;
 }
