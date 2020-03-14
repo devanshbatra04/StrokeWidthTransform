@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <vector>
+using namespace std;
 
 
 #define PI 3.14159265
@@ -25,12 +26,12 @@ namespace DetectText {
 
     // A utility function to add an edge in an 
     // undirected graph. 
-    void addEdge(vector<int> adj[], int u, int v) { 
+    void addEdge(std::vector<int> adj[], int u, int v) { 
         adj[u].push_back(v); 
         adj[v].push_back(u); 
     }
 
-    void DFSUtil(int v, bool visited[], vector<int> adj[], int label, vector<int> &component_id) 
+    void DFSUtil(int v, bool visited[], std::vector<int> adj[], int label, std::vector<int> &component_id) 
     { 
         // Mark the current node as visited and label it as belonging to the current component
         visited[v] = true; 
@@ -45,7 +46,7 @@ namespace DetectText {
         }
     } 
 
-    int connected_components(vector<int> adj[], vector<int> &component_id, int num_vertices) {
+    int connected_components(std::vector<int> adj[], std::vector<int> &component_id, int num_vertices) {
         bool *visited = new bool[num_vertices]; 
         for(int v = 0; v < num_vertices; v++) 
             visited[v] = false; 
@@ -462,7 +463,7 @@ namespace DetectText {
         Mat outTemp( output.size(), CV_8UC1 );
 
         output.convertTo(outTemp, CV_8UC1, 255.);
-        cvtColor (outTemp, output, CV_GRAY2RGB);
+        cvtColor (outTemp, output, COLOR_GRAY2RGB);
 
         for (int i = 0; i < components.size(); i++) {
             Component compi = components[i];
@@ -476,7 +477,7 @@ namespace DetectText {
             else {
                 c = RED;
             }
-            rectangle(output, cvPoint(compi.BB_pointP.x, compi.BB_pointP.y), cvPoint(compi.BB_pointQ.x, compi.BB_pointQ.y), c, 2);
+            rectangle(output, Point(compi.BB_pointP.x, compi.BB_pointP.y), Point(compi.BB_pointQ.x, compi.BB_pointQ.y), c, 2);
         }
     }
 
@@ -694,7 +695,7 @@ namespace DetectText {
 
         // Convert to grayscale
         Mat grayImage(input_image.size(), CV_8UC1);
-        cvtColor(input_image, grayImage, CV_RGB2GRAY);
+        cvtColor(input_image, grayImage, COLOR_RGB2GRAY);
         // Create Canny Image
         double threshold_low = 175;
         double threshold_high = 320;
@@ -750,9 +751,10 @@ namespace DetectText {
 
 int main() {
     string imagePath = "/home/opencv-dev/Desktop/scene/IMG_1214.JPG";
-    cv::Mat image = imread(imagePath);
-    cvtColor(image, image, CV_BGR2RGB);
+    cv::Mat image = imread(imagePath, IMREAD_COLOR);
+    imshow( "Display window", image ); 
+    cvtColor(image, image, COLOR_BGR2RGB);
     DetectText::textDetection(image, 0);
-    cvDestroyAllWindows();
+    destroyAllWindows();
     return 0;
 }
