@@ -363,14 +363,14 @@ namespace DetectText {
 
     }
 
-    std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components){
+    std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components, bool skipChecks){
         std::vector<Component> filteredComponents;
         filteredComponents.reserve(components.size());
         for (int i = 0; i < components.size(); i++) {
             vector<SWTPoint> component = components[i];
             ComponentAttr attributes = getAttributes(component, SWTImage);  
-            if (attributes.variance > 0.5 * attributes.mean) continue;
-            if (attributes.width > 300) continue;
+            if (!skipChecks && attributes.variance > 0.5 * attributes.mean) continue;
+            if (!skipChecks && attributes.width > 300) continue;
             
 
             float area = attributes.length * attributes.width;
@@ -403,7 +403,7 @@ namespace DetectText {
                 }
             }
             
-            if (attributes.length/attributes.width < 1./10. || attributes.length/attributes.width > 10.) continue;
+            if (!skipChecks && (attributes.length/attributes.width < 1./10. || attributes.length/attributes.width > 10.)) continue;
 
             Component acceptedComponent;
             acceptedComponent.length = attributes.length;
@@ -453,6 +453,10 @@ namespace DetectText {
         std::cout << "After filtering " << filteredComponents.size() << " components" << std::endl;
         return filteredComponents;
     };
+
+    // std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components) {
+    //     filterComponents(SWTImage, components, false);
+    // }
 
     void renderComponentBBs (Mat& SWTImage, std::vector<Component> components, Mat& output) {
         Mat outTemp( output.size(), CV_8UC1 );
@@ -651,19 +655,37 @@ namespace DetectText {
                 }
             }
             chains = newchains;
-            std::stable_sort(chains.begin(), chains.end(), chainSortLength);        
+            std::stable_sort(chains.begin(), chains.end(), chainSortLength);    
+
+            
         }
 
         std::vector<ChainedComponent> newchains;
+        std::vector<std::vector<SWTPoint>> componentsPointsVector;
+        vector<Component> finalComponents;
             for (int i = 0; i < chains.size(); i++) {
                 if (chains[i].componentIndices.size() >= 3) {
                     newchains.push_back(chains[i]);
+                    for (int j = 0; j < chains[i].componentIndices.size(); j++) { 
+                        Component acceptedComponent = components[chains[i].componentIndices[j]];
+                        std::vector<SWTPoint> componentPoints;
+                        for (int k = 0; k < acceptedComponent.points.size(); k++) {
+                            componentPoints.push_back(acceptedComponent.points[k]);
+                        }
+                        componentsPointsVector.push_back(componentPoints);
+                    }
                 }
             }
+            finalComponents = filterComponents(SWTImage, componentsPointsVector, true);
             chains = newchains;
             std::stable_sort(chains.begin(), chains.end(), chainSortLength);
 
             std::cout << chains.size() << " chains formed after merging" << std::endl;
+            renderComponents(SWTImage, finalComponents, output);
+            renderComponentBBs(SWTImage, finalComponents, output);    
+            namedWindow( "Rendered Chained Components", WINDOW_AUTOSIZE); 
+            imshow( "Rendered Chained Components", output);  
+            waitKey(0);
     }
 
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
@@ -678,17 +700,11 @@ namespace DetectText {
         double threshold_high = 320;
         Mat canny_edge_image(input_image.size(), CV_8UC1);
         Canny (grayImage, canny_edge_image, threshold_low, threshold_high, 3);
-        // imwrite ( "canny.png", canny_edge_image);
-        // namedWindow( "Canny Edges", WINDOW_AUTOSIZE ); 
-        // imshow( "Canny Edges", canny_edge_image );  
-        // waitKey(0);
 
         // Create gradient X, gradient Y
         Mat gaussianImage( input_image.size(), CV_32FC1);
         grayImage.convertTo(gaussianImage, CV_32FC1, 1./255.);
-        // namedWindow( "Grayscale Image", WINDOW_AUTOSIZE ); 
-        // imshow( "Grayscale Image", gaussianImage );  
-        // waitKey(0);
+        
         
         Mat gradientX( input_image.size(), CV_32FC1 );
         Mat gradientY( input_image.size(), CV_32FC1 );
@@ -697,10 +713,7 @@ namespace DetectText {
         Scharr(gaussianImage, gradientY, -1, 0, 1);
         GaussianBlur(gradientX, gradientX, Size(3, 3), 0);
         GaussianBlur(gradientY, gradientY, Size(3, 3), 0);
-        // namedWindow( "Blurred Grayscale Image", WINDOW_AUTOSIZE ); 
-        // imshow( "Blurred Grayscale Image", gaussianImage );  
-        // waitKey(0);
-        // Calculate SWT and return ray vectors
+        
         std::vector<Ray> rays;
         Mat SWTImage( input_image.size(), CV_32FC1 );
         
@@ -717,11 +730,11 @@ namespace DetectText {
         imshow( "Normalized SWT Image", normalised_image);  
         waitKey(0);
 
-        // Calculate legally connect components from SWT and gradient image.
+        // Calculate legally connected components from SWT and gradient image.
         // return type is a vector of vectors, where each outer vector is a component and
         // the inner vector contains the (y,x) of each pixel in that component.
         std::vector<std::vector<SWTPoint> > components = getComponents(SWTImage, rays);
-        std::vector<Component> validComponents = filterComponents(SWTImage, components);
+        std::vector<Component> validComponents = filterComponents(SWTImage, components, false);
 
         Mat outTemp( input_image.size(), CV_32FC1 );
         renderComponents(SWTImage, validComponents, outTemp);
@@ -729,13 +742,14 @@ namespace DetectText {
         namedWindow( "Rendered Components", WINDOW_AUTOSIZE); 
         imshow( "Rendered Components", outTemp);  
         waitKey(0);
-
-        findAndRenderValidChains(input_image, SWTImage, validComponents, outTemp);
+        
+        Mat out( input_image.size(), CV_32FC1 );
+        findAndRenderValidChains(input_image, SWTImage, validComponents, out);
     }
 }
 
 int main() {
-    string imagePath = "/home/opencv-dev/Desktop/bottle.jpeg";
+    string imagePath = "/home/opencv-dev/Desktop/scene/IMG_1214.JPG";
     cv::Mat image = imread(imagePath);
     cvtColor(image, image, CV_BGR2RGB);
     DetectText::textDetection(image, 0);
