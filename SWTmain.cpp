@@ -476,6 +476,51 @@ namespace DetectText {
         }
     }
 
+    void findAndRenderValidChains(Mat input_image, Mat SWTImage, std::vector<Component> components, Mat & output) {
+        std::vector<ChannelAverage> colorAverages;
+        colorAverages.reserve(components.size());
+        for (int i = 0; i < components.size(); i++) {
+            Component compi = components[i];
+            ChannelAverage avgCompi;
+            avgCompi.Red = 0;
+            avgCompi.Green = 0;
+            avgCompi.Blue = 0;
+            for (int j = 0; j < compi.points.size(); j++) {
+                int x = compi.points[j].x;
+                int y = compi.points[j].y;
+                avgCompi.Red += (float) input_image.at<uchar>(y, x*3);
+                avgCompi.Green += (float) input_image.at<uchar>(y, x*3+1);
+                avgCompi.Blue += (float) input_image.at<uchar>(y, x*3+2);
+            }
+            avgCompi.Red /= compi.points.size();
+            avgCompi.Green /= compi.points.size();
+            avgCompi.Blue /= compi.points.size(); 
+            colorAverages.push_back(avgCompi);      
+        }
+        int count = 0;
+        for (int i = 0; i < components.size(); i++) {
+            Component compi = components[i];
+            for (int j = i+1; j < components.size(); j++) {
+                Component compj = components[j];
+                if ((compi.median / compj.median <= 2.0 || compj.median / compi.median <= 2.0) 
+                    && (compi.width/compj.width <= 2.0 || compj.width/compi.width <= 2.0)) {
+                        float dist = (compi.cx - compj.cx) * (compi.cx - compj.cx) +
+                                     (compi.cy - compj.cy) * (compi.cy - compj.cy);
+                        float colorDist = (colorAverages[i].Red - colorAverages[j].Red) * (colorAverages[i].Red - colorAverages[j].Red) +
+                                        (colorAverages[i].Green - colorAverages[j].Green) * (colorAverages[i].Green - colorAverages[j].Green) +
+                                        (colorAverages[i].Blue - colorAverages[j].Blue) * (colorAverages[i].Blue - colorAverages[j].Blue);
+                        if (dist < 9*(float)(std::max(std::min(compi.length,compi.width),std::min(compj.length,compj.width)))
+                            *(float)(std::max(std::min(compi.length,compi.width),std::min(compj.length,compj.width))) && colorDist < 1600) {
+                                count++;
+                            }
+
+                }
+            }
+        }
+        std::cout << count << " Eligible Pairs" << std::endl;
+        
+    }
+
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
         assert (input_image.channels() == 3);
@@ -539,12 +584,8 @@ namespace DetectText {
         namedWindow( "Rendered Components", WINDOW_AUTOSIZE); 
         imshow( "Rendered Components", outTemp);  
         waitKey(0);
-        // std::vector<std::vector<SWTPoint2d> > validComponents;
-        // std::vector<SWTPointPair2d > compBB;
-        // std::vector<Point2dFloat> compCenters;
-        // std::vector<float> compMedians;
-        // std::vector<SWTPoint2d> compDimensions;
-        // filterComponents(SWTImage, components, validComponents, compCenters, compMedians, compDimensions, compBB );
+
+        findAndRenderValidChains(input_image, SWTImage, validComponents, outTemp);
     }
 }
 

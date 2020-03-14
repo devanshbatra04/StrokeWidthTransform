@@ -35,6 +35,10 @@ namespace SWT {
         float length, width;
     };
 
+    struct ChannelAverage {
+        float Red, Green, Blue;
+    };
+
     const Scalar BLUE (255, 0, 0);
     const Scalar GREEN(0, 255, 0);
     const Scalar RED  (0, 0, 255);
