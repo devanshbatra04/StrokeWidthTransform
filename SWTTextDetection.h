@@ -1,5 +1,5 @@
-#ifndef TEXTDETECTION_H
-#define TEXTDETECTION_H
+#ifndef SWT_H
+#define SWT_H
 
 #include <opencv2/core/core.hpp>
 #include <vector>
@@ -39,9 +39,22 @@ namespace SWT {
         float Red, Green, Blue;
     };
 
+    struct Direction {
+        float x, y;
+    };
+
+    struct ChainedComponent {
+        int chainIndexA;
+        int chainIndexB;
+        std::vector<int> componentIndices;
+        float chainDist;
+        Direction dir;
+        bool merged;
+    };
+
     const Scalar BLUE (255, 0, 0);
     const Scalar GREEN(0, 255, 0);
     const Scalar RED  (0, 0, 255);
 }
 
-#endif // TEXTDETECTION_H
+#endif 

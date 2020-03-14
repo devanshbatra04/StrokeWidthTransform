@@ -476,6 +476,14 @@ namespace DetectText {
         }
     }
 
+    bool chainSortDist (ChainedComponent Chainl, ChainedComponent Chainr) {
+        return Chainl.chainDist < Chainr.chainDist;
+    }
+
+    bool chainSortLength (ChainedComponent Chainl, ChainedComponent Chainr) {
+        return Chainl.componentIndices.size() < Chainr.componentIndices.size();
+    }
+
     void findAndRenderValidChains(Mat input_image, Mat SWTImage, std::vector<Component> components, Mat & output) {
         std::vector<ChannelAverage> colorAverages;
         colorAverages.reserve(components.size());
@@ -498,6 +506,7 @@ namespace DetectText {
             colorAverages.push_back(avgCompi);      
         }
         int count = 0;
+        std::vector<ChainedComponent> chains;
         for (int i = 0; i < components.size(); i++) {
             Component compi = components[i];
             for (int j = i+1; j < components.size(); j++) {
@@ -511,14 +520,150 @@ namespace DetectText {
                                         (colorAverages[i].Blue - colorAverages[j].Blue) * (colorAverages[i].Blue - colorAverages[j].Blue);
                         if (dist < 9*(float)(std::max(std::min(compi.length,compi.width),std::min(compj.length,compj.width)))
                             *(float)(std::max(std::min(compi.length,compi.width),std::min(compj.length,compj.width))) && colorDist < 1600) {
+                                ChainedComponent chain;
+                                chain.chainIndexA = i;
+                                chain.chainIndexB = j;
+                                vector <int> componentIndices;
+                                componentIndices.push_back(i);
+                                componentIndices.push_back(j);
+                                chain.componentIndices = componentIndices;
+                                chain.chainDist = dist;
+
+                                float dx = compi.cx - compj.cx;
+                                float dy = compi.cy - compj.cy;
+                                float mod = sqrt(dx * dx + dy * dy);
+                                dx = dx / mod;
+                                dy = dy / mod;
+
+                                Direction dir;
+                                dir.x = dx;
+                                dir.y = dy;
+                                chain.dir = dir;
+                                chains.push_back(chain);
                                 count++;
                             }
 
                 }
             }
         }
-        std::cout << count << " Eligible Pairs" << std::endl;
-        
+        std::cout << chains.size() << " Eligible Pairs" << std::endl;
+        std::sort(chains.begin(), chains.end(), chainSortDist);
+
+        const float alignmentThreshold = PI / 6;
+        int merges = 1;
+        while (merges > 0) {
+            for (unsigned int i = 0; i < chains.size(); i++) {
+                chains[i].merged = false;
+            }
+            merges = 0;
+            std::vector<ChainedComponent> chainsAfterMerging;
+            for (int i = 0; i < chains.size(); i++) {
+                for (int j = 0; j < chains.size(); j++){
+                    if (i!=j && !chains[i].merged && !chains[j].merged) {
+                        if (chains[i].chainIndexA == chains[j].chainIndexA) {
+                            if (acos(chains[i].dir.x * -chains[j].dir.x + chains[i].dir.y * -chains[j].dir.y) < alignmentThreshold) {
+                                chains[i].chainIndexA = chains[j].chainIndexB;
+                                for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
+                                    chains[i].componentIndices.push_back(*it);
+                                }
+                                float d_x = components[chains[i].chainIndexA].cx - components[chains[i].chainIndexB].cx;
+                                float d_y = components[chains[i].chainIndexA].cy - components[chains[i].chainIndexB].cy;
+                                chains[i].chainDist = d_x * d_x + d_y * d_y;
+
+                                float mag = sqrt(d_x*d_x + d_y*d_y);
+                                d_x = d_x / mag;
+                                d_y = d_y / mag;
+                                Direction dir;
+                                dir.x = d_x;
+                                dir.y = d_y;
+                                chains[i].dir = dir;
+                                chains[j].merged = true;
+                                merges++;
+                            }
+                        } else if (chains[i].chainIndexA == chains[j].chainIndexB) {
+                            if (acos(chains[i].dir.x * chains[j].dir.x + chains[i].dir.y * chains[j].dir.y) < alignmentThreshold) {
+                                chains[i].chainIndexA = chains[j].chainIndexA;
+                                for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
+                                    chains[i].componentIndices.push_back(*it);
+                                }
+                                float d_x = components[chains[i].chainIndexA].cx - components[chains[i].chainIndexB].cx;
+                                float d_y = components[chains[i].chainIndexA].cy - components[chains[i].chainIndexB].cy;
+                                chains[i].chainDist = d_x * d_x + d_y * d_y;
+
+                                float mag = sqrt(d_x*d_x + d_y*d_y);
+                                d_x = d_x / mag;
+                                d_y = d_y / mag;
+                                Direction dir;
+                                dir.x = d_x;
+                                dir.y = d_y;
+                                chains[i].dir = dir;
+                                chains[j].merged = true;
+                                merges++;
+                            }
+                        } else if (chains[i].chainIndexB == chains[j].chainIndexA) {
+                            if (acos(chains[i].dir.x * chains[j].dir.x + chains[i].dir.y * chains[j].dir.y) < alignmentThreshold) {
+                                chains[i].chainIndexB = chains[j].chainIndexA;
+                                for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
+                                    chains[i].componentIndices.push_back(*it);
+                                }
+                                float d_x = components[chains[i].chainIndexA].cx - components[chains[i].chainIndexB].cx;
+                                float d_y = components[chains[i].chainIndexA].cy - components[chains[i].chainIndexB].cy;
+                                chains[i].chainDist = d_x * d_x + d_y * d_y;
+
+                                float mag = sqrt(d_x*d_x + d_y*d_y);
+                                d_x = d_x / mag;
+                                d_y = d_y / mag;
+                                Direction dir;
+                                dir.x = d_x;
+                                dir.y = d_y;
+                                chains[i].dir = dir;
+                                chains[j].merged = true;
+                                merges++;
+                            }
+                        } else if (chains[i].chainIndexB == chains[j].chainIndexB) {
+                            if (acos(chains[i].dir.x * -chains[j].dir.x + chains[i].dir.y * -chains[j].dir.y) < alignmentThreshold) {
+                                chains[i].chainIndexB = chains[j].chainIndexA;
+                                for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
+                                    chains[i].componentIndices.push_back(*it);
+                                }
+                                float d_x = components[chains[i].chainIndexA].cx - components[chains[i].chainIndexB].cx;
+                                float d_y = components[chains[i].chainIndexA].cy - components[chains[i].chainIndexB].cy;
+                                chains[i].chainDist = d_x * d_x + d_y * d_y;
+
+                                float mag = sqrt(d_x*d_x + d_y*d_y);
+                                d_x = d_x / mag;
+                                d_y = d_y / mag;
+                                Direction dir;
+                                dir.x = d_x;
+                                dir.y = d_y;
+                                chains[i].dir = dir;
+                                chains[j].merged = true;
+                                merges++;                                
+                            }
+                        }
+                    }
+                }
+            }
+            std::vector<ChainedComponent> newchains;
+            for (int i = 0; i < chains.size(); i++) {
+                if (!chains[i].merged) {
+                    newchains.push_back(chains[i]);
+                }
+            }
+            chains = newchains;
+            std::stable_sort(chains.begin(), chains.end(), chainSortLength);        
+        }
+
+        std::vector<ChainedComponent> newchains;
+            for (int i = 0; i < chains.size(); i++) {
+                if (chains[i].componentIndices.size() >= 3) {
+                    newchains.push_back(chains[i]);
+                }
+            }
+            chains = newchains;
+            std::stable_sort(chains.begin(), chains.end(), chainSortLength);
+
+            std::cout << chains.size() << " chains formed after merging" << std::endl;
     }
 
     Mat textDetection (const Mat& input_image, bool dark_on_light) {
