@@ -64,14 +64,13 @@ namespace DetectText {
     }
 
     void SWTFirstPass (Mat edgeImage, Mat gradientX, Mat gradientY, bool dark_on_light, Mat & SWTImage, std::vector<Ray> & rays) {
-        for( int row = 0; row < edgeImage.rows; row++ ){
+        for( int row = 0; row < SWTImage.rows; row++ ){
             float* ptr = (float*)SWTImage.ptr(row);
-            for ( int col = 0; col < edgeImage.cols; col++ ){
+            for ( int col = 0; col < SWTImage.cols; col++ ){
                 *ptr++ = -1;
             }
         }
         
-        long long int count = 0;
 
         for( int row = 0; row < edgeImage.rows; row++ ){
             for ( int col = 0; col < edgeImage.cols; col++ ){
@@ -91,19 +90,17 @@ namespace DetectText {
 
                 Ray ray;
                 SWTPoint p;
-                p.x = row;
-                p.y = col;
+                p.x = col;
+                p.y = row;
                 ray.p = p;
                 std::vector<SWTPoint> points;
                 points.push_back(p);
-                float curPosX = (float) row + 0.5;
-                float curPosY = (float) col + 0.5;
-                int curPixX = row;
-                int curPixY = col;
-
+                float curPosX = (float) col + 0.5;
+                float curPosY = (float) row + 0.5;
+                int curPixX = col;
+                int curPixY = row;
                 float inc = 0.05;
-                while(true) {
-                    count++;
+                while (true) {
                     curPosX += inc * dx;
                     curPosY += inc * dy;
                     if ((int)(floor(curPosX)) != curPixX || (int)(floor(curPosY)) != curPixY) {
@@ -490,8 +487,8 @@ namespace DetectText {
         double threshold_low = 175;
         double threshold_high = 320;
         Mat canny_edge_image(input_image.size(), CV_8UC1);
-        Canny(grayImage, canny_edge_image, threshold_low, threshold_high, 3) ;
-        // imwrite ( "canny.png", edgeImage);
+        Canny (grayImage, canny_edge_image, threshold_low, threshold_high, 3);
+        // imwrite ( "canny.png", canny_edge_image);
         // namedWindow( "Canny Edges", WINDOW_AUTOSIZE ); 
         // imshow( "Canny Edges", canny_edge_image );  
         // waitKey(0);
@@ -554,6 +551,7 @@ namespace DetectText {
 int main() {
     string imagePath = "/home/opencv-dev/Desktop/bottle.jpeg";
     cv::Mat image = imread(imagePath);
+    cvtColor(image, image, CV_BGR2RGB);
     DetectText::textDetection(image, 0);
     cvDestroyAllWindows();
     return 0;
