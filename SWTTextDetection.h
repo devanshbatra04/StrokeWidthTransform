@@ -1,60 +1,20 @@
+// This file is part of OpenCV project.
+// It is subject to the license terms in the LICENSE file found in the top-level directory
+// of this distribution and at http://opencv.org/license.html.
 #ifndef SWT_H
 #define SWT_H
 
 #include <opencv2/core/core.hpp>
 #include <vector>
 
-namespace SWT {
-    struct SWTPoint {
-        int x;
-        int y;
-        float SWT;
-    };
-
-    struct Ray {
-        SWTPoint p;
-        SWTPoint q;
-        std::vector<SWTPoint> points;
-    };
-
-    struct Component {
-        SWTPoint BB_pointP;
-        SWTPoint BB_pointQ;
-        float cx;
-        float cy;
-        float median;
-        float mean;
-        int length, width;
-        std::vector<SWTPoint> points;
-    };
-
-    struct ComponentAttr {
-        float mean, variance, median;
-        int xmin, ymin;
-        int xmax, ymax;
-        float length, width;
-    };
-
-    struct ChannelAverage {
-        float Red, Green, Blue;
-    };
-
-    struct Direction {
-        float x, y;
-    };
-
-    struct ChainedComponent {
-        int chainIndexA;
-        int chainIndexB;
-        std::vector<int> componentIndices;
-        float chainDist;
-        Direction dir;
-        bool merged;
-    };
-
-    const Scalar BLUE (255, 0, 0);
-    const Scalar GREEN(0, 255, 0);
-    const Scalar RED  (0, 0, 255);
+namespace cv {
+    namespace text {
+        /** @brief Applies the Stroke Width Transform operator followed by filtering of connected components of similar Stroke Widths to find letter candidates and chain them by proximity and size.
+            @param input_image the input image with 3 channels.
+            @param dark_on_light a boolean value signifying whether the text is darker or lighter than the background, it is observed to reverse the gradient obtained from Scharr operator, and significantly affect the result. 
+            */
+            vector<cv::Rect> textDetection (const Mat& input_image, bool dark_on_light)
+    }    
 }
 
 #endif 

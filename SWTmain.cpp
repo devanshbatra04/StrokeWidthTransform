@@ -1,12 +1,14 @@
+// This file is part of OpenCV project.
+// It is subject to the license terms in the LICENSE file found in the top-level directory
+// of this distribution and at http://opencv.org/license.html.
 #include <cassert>
 #include <cmath>
-#include <iostream>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 #include <math.h>
-#include <time.h>
 #include <utility>
+#include <iostream>
 #include <algorithm>
 #include <unordered_map>
 #include <vector>
@@ -15,14 +17,61 @@ using namespace std;
 
 #define PI 3.14159265
 
-
-using namespace cv;
-
 #include "SWTTextDetection.h"
-using namespace SWT;
+#include <opencv2/core/core.hpp>
 
+namespace cv {
+namespace text {
+    struct SWTPoint {
+        int x;
+        int y;
+        float SWT;
+    };
 
-namespace DetectText {
+    struct Ray {
+        SWTPoint p;
+        SWTPoint q;
+        std::vector<SWTPoint> points;
+    };
+
+    struct Component {
+        SWTPoint BB_pointP;
+        SWTPoint BB_pointQ;
+        float cx;
+        float cy;
+        float median;
+        float mean;
+        int length, width;
+        std::vector<SWTPoint> points;
+    };
+
+    struct ComponentAttr {
+        float mean, variance, median;
+        int xmin, ymin;
+        int xmax, ymax;
+        float length, width;
+    };
+
+    struct ChannelAverage {
+        float Red, Green, Blue;
+    };
+
+    struct Direction {
+        float x, y;
+    };
+
+    struct ChainedComponent {
+        int chainIndexA;
+        int chainIndexB;
+        std::vector<int> componentIndices;
+        float chainDist;
+        Direction dir;
+        bool merged;
+    };
+
+    const Scalar BLUE (255, 0, 0);
+    const Scalar GREEN(0, 255, 0);
+    const Scalar RED  (0, 0, 255);
 
     // A utility function to add an edge in an 
     // undirected graph. 
@@ -266,7 +315,7 @@ namespace DetectText {
 
         std::vector<std::vector<SWTPoint> > components;
         components.reserve(num_comp);
-        std::cout << "Before filtering, " << num_comp << " components and " << num_vertices << " vertices" << std::endl;
+
         for (int j = 0; j < num_comp; j++) {
             std::vector<SWTPoint> tmp;
             components.push_back(tmp);
@@ -451,13 +500,8 @@ namespace DetectText {
         filteredComponents = tempComp;
 
 
-        std::cout << "After filtering " << filteredComponents.size() << " components" << std::endl;
         return filteredComponents;
     };
-
-    // std::vector<Component> filterComponents(Mat& SWTImage, std::vector<std::vector<SWTPoint>> components) {
-    //     filterComponents(SWTImage, components, false);
-    // }
 
     void renderComponentBBs (Mat& SWTImage, std::vector<Component> components, Mat& output) {
         Mat outTemp( output.size(), CV_8UC1 );
@@ -481,6 +525,20 @@ namespace DetectText {
         }
     }
 
+    vector<cv::Rect> getComponentBBs (std::vector<Component> components) {
+        vector<cv::Rect> bbs;
+        for (int i = 0; i < components.size(); i++) {
+            Component compi = components[i];
+            int wd = compi.BB_pointP.x - compi.BB_pointQ.x;
+            int ht = compi.BB_pointP.y - compi.BB_pointQ.y;
+            if (wd < 0) wd = -wd;
+            if (ht < 0) ht = -ht;
+
+            bbs.push_back(Rect(min(compi.BB_pointP.x, compi.BB_pointQ.x), min(compi.BB_pointP.y, compi.BB_pointQ.y), wd, ht));
+        }
+        return bbs;
+    }
+
     bool chainSortDist (ChainedComponent Chainl, ChainedComponent Chainr) {
         return Chainl.chainDist < Chainr.chainDist;
     }
@@ -489,7 +547,7 @@ namespace DetectText {
         return Chainl.componentIndices.size() < Chainr.componentIndices.size();
     }
 
-    void findAndRenderValidChains(Mat input_image, Mat SWTImage, std::vector<Component> components, Mat & output) {
+    vector<cv::Rect> findAndRenderValidChains(Mat input_image, Mat SWTImage, std::vector<Component> components, Mat & output) {
         std::vector<ChannelAverage> colorAverages;
         colorAverages.reserve(components.size());
         for (int i = 0; i < components.size(); i++) {
@@ -551,7 +609,7 @@ namespace DetectText {
                 }
             }
         }
-        std::cout << chains.size() << " Eligible Pairs" << std::endl;
+        
         std::sort(chains.begin(), chains.end(), chainSortDist);
 
         const float alignmentThreshold = PI / 6;
@@ -566,7 +624,9 @@ namespace DetectText {
                 for (int j = 0; j < chains.size(); j++){
                     if (i!=j && !chains[i].merged && !chains[j].merged) {
                         if (chains[i].chainIndexA == chains[j].chainIndexA) {
+                            // cout << chains[i].dir.x << " " << chains[i].dir.y << " " << chains[j].dir.x << " " << chains[j].dir.y << endl;
                             if (acos(chains[i].dir.x * -chains[j].dir.x + chains[i].dir.y * -chains[j].dir.y) < alignmentThreshold) {
+                                // std::cout << "here1" << endl;
                                 chains[i].chainIndexA = chains[j].chainIndexB;
                                 for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
                                     chains[i].componentIndices.push_back(*it);
@@ -587,6 +647,7 @@ namespace DetectText {
                             }
                         } else if (chains[i].chainIndexA == chains[j].chainIndexB) {
                             if (acos(chains[i].dir.x * chains[j].dir.x + chains[i].dir.y * chains[j].dir.y) < alignmentThreshold) {
+                                // std::cout << "here2" << endl;
                                 chains[i].chainIndexA = chains[j].chainIndexA;
                                 for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
                                     chains[i].componentIndices.push_back(*it);
@@ -607,6 +668,7 @@ namespace DetectText {
                             }
                         } else if (chains[i].chainIndexB == chains[j].chainIndexA) {
                             if (acos(chains[i].dir.x * chains[j].dir.x + chains[i].dir.y * chains[j].dir.y) < alignmentThreshold) {
+                                // std::cout << "here3" << endl;    
                                 chains[i].chainIndexB = chains[j].chainIndexA;
                                 for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
                                     chains[i].componentIndices.push_back(*it);
@@ -627,6 +689,7 @@ namespace DetectText {
                             }
                         } else if (chains[i].chainIndexB == chains[j].chainIndexB) {
                             if (acos(chains[i].dir.x * -chains[j].dir.x + chains[i].dir.y * -chains[j].dir.y) < alignmentThreshold) {
+                                // std::cout << "here4" << endl;
                                 chains[i].chainIndexB = chains[j].chainIndexA;
                                 for (std::vector<int>::iterator it = chains[j].componentIndices.begin(); it != chains[j].componentIndices.end(); it++) {
                                     chains[i].componentIndices.push_back(*it);
@@ -656,9 +719,7 @@ namespace DetectText {
                 }
             }
             chains = newchains;
-            std::stable_sort(chains.begin(), chains.end(), chainSortLength);    
-
-            
+            std::stable_sort(chains.begin(), chains.end(), chainSortLength);                
         }
 
         std::vector<ChainedComponent> newchains;
@@ -681,15 +742,13 @@ namespace DetectText {
             chains = newchains;
             std::stable_sort(chains.begin(), chains.end(), chainSortLength);
 
-            std::cout << chains.size() << " chains formed after merging" << std::endl;
+            // std::cout << chains.size() << " chains formed after merging" << std::endl;
             renderComponents(SWTImage, finalComponents, output);
-            renderComponentBBs(SWTImage, finalComponents, output);    
-            namedWindow( "Rendered Chained Components", WINDOW_AUTOSIZE); 
-            imshow( "Rendered Chained Components", output);  
-            waitKey(0);
+            renderComponentBBs(SWTImage, finalComponents, output);
+            return getComponentBBs(finalComponents);    
     }
 
-    Mat textDetection (const Mat& input_image, bool dark_on_light) {
+    vector<cv::Rect> textDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
         assert (input_image.channels() == 3);
 
@@ -740,21 +799,21 @@ namespace DetectText {
         Mat outTemp( input_image.size(), CV_32FC1 );
         renderComponents(SWTImage, validComponents, outTemp);
         renderComponentBBs(SWTImage, validComponents, outTemp);
-        namedWindow( "Rendered Components", WINDOW_AUTOSIZE); 
-        imshow( "Rendered Components", outTemp);  
-        waitKey(0);
         
         Mat out( input_image.size(), CV_32FC1 );
-        findAndRenderValidChains(input_image, SWTImage, validComponents, out);
+        return findAndRenderValidChains(input_image, SWTImage, validComponents, out);
     }
+}
 }
 
 int main() {
     string imagePath = "/home/opencv-dev/Desktop/scene/IMG_1214.JPG";
-    cv::Mat image = imread(imagePath, IMREAD_COLOR);
-    imshow( "Display window", image ); 
-    cvtColor(image, image, COLOR_BGR2RGB);
-    DetectText::textDetection(image, 0);
-    destroyAllWindows();
+    cv::Mat image = cv::imread(imagePath, cv::IMREAD_COLOR);
+    cv::imshow( "Display window", image ); 
+    cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+    std::vector<cv::Rect> bbs = cv::text::textDetection(image, 0);
+    cout << bbs.size();
+    cv::destroyAllWindows();
     return 0;
 }
+    
