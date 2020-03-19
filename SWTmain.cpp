@@ -748,7 +748,7 @@ namespace text {
             return getComponentBBs(finalComponents);    
     }
 
-    vector<cv::Rect> textDetection (const Mat& input_image, bool dark_on_light) {
+    vector<cv::Rect> SWTTextDetection (const Mat& input_image, bool dark_on_light) {
         assert (input_image.depth() == CV_8U);
         assert (input_image.channels() == 3);
 
@@ -811,7 +811,7 @@ int main() {
     cv::Mat image = cv::imread(imagePath, cv::IMREAD_COLOR);
     cv::imshow( "Display window", image ); 
     cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
-    std::vector<cv::Rect> bbs = cv::text::textDetection(image, 0);
+    std::vector<cv::Rect> bbs = cv::text::SWTTextDetection(image, 0);
     cout << bbs.size();
     cv::destroyAllWindows();
     return 0;
